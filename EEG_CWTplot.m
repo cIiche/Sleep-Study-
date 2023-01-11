@@ -7,14 +7,20 @@ clc
 
 %% Load Voltage Data
 
-filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_7_22 Voltage\' ;
-fileName = 'Trial 2' ;
-disp(fileName) 
+% filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_7_22 Voltage\' ;
+% filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_14_22 Voltage\' ;
+% filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_21_22 Voltage\' ;
+% filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\08_02_22 Voltage\'; 
+filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\08_04_22 Voltage\'; 
+% filePath = 'C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\12_22_22 m1\'; 
 
+fileName = 'Trial 3' ;
+disp(fileName) 
 load([filePath,fileName]);
 
+baselinenormal = input("Normalize data with baseline?: '1' = yes, '0' = no: ") ;
 %% set parameters
-[LP, RP, stim] = automatic_channel_assign(filePath); % preset experiment channel assignment based on surgery notes 
+[LTRN, RTRN, LM, RM, LCA1H, RCA1H, stim] = automatic_channel_assign(filePath); % preset experiment channel assignment based on surgery notes 
 
 %% Set sampling rate and time axis
 fs = 10000 ;
@@ -23,13 +29,42 @@ time=timeax/fs/60; % frames to seconds to minutes (these are the time values for
 timesec=timeax./fs;
 tottime=length(timeax)./fs./60; % total experiment block length in minutes 
 
+%% find median baseline rms for normalization
+
+if baselinenormal == 1 
+    baseline = dir([filePath 'baseline.mat']); 
+    baseline_medians_matrix = [];
+    rms_baseline=[];
+    disp(baseline.name);
+    load([filePath baseline.name])
+    calc_baseline;
+end 
 %% Organize data into structure array
 alldata=[]; %initialize structure array (alldata is a struct)
-alldata.RPdata=data(datastart(RP):dataend(RP));% Call different fields as StructName.fieldName-> Struct is alldata and field is S1dataR
-alldata.LPdata=data(datastart(LP):dataend(LP));
-alldata.stimdata=data(datastart(stim):dataend(stim));
-alldata.LPRPbipolardata=alldata.LPdata-alldata.RPdata;
-names={'RPdata','LPdata', 'stimdata', 'LPRPbipolardata'};
+if filePath == "C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_7_22 Voltage\" 
+    alldata.RTRNdata=data(datastart(RTRN):dataend(RTRN));% Call different fields as StructName.fieldName-> Struct is alldata and field is S1dataR
+    alldata.LTRNdata=data(datastart(LTRN):dataend(LTRN));
+    alldata.stimdata=data(datastart(stim):dataend(stim));
+    alldata.LTRNRTRNbipolardata=alldata.LTRNdata-alldata.RTRNdata;
+    names={'RTRNdata','LTRNdata', 'stimdata', 'LTRNRTRNbipolardata'};
+% elseif filePath == "C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\7_14_22 Voltage\" || filePath == "C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\12_22_22 m1\"
+    elseif filePath == "C:\Users\Henry\MATLAB\Projects\Sleep_Study\Data\12_22_22 m1\"
+    alldata.RTRNdata=data(datastart(RTRN):dataend(RTRN));% Call different fields as StructName.fieldName-> Struct is alldata and field is S1dataR
+    alldata.LTRNdata=data(datastart(LTRN):dataend(LTRN));
+    alldata.stimdata=data(datastart(stim):dataend(stim));
+    alldata.LTRNRTRNbipolardata=alldata.LTRNdata-alldata.RTRNdata;
+    alldata.LMdata=data(datastart(LM):dataend(LM));
+    alldata.RMdata=data(datastart(RM):dataend(RM));
+    names={'RTRNdata','LTRNdata','RMdata','LMdata', 'stimdata', 'LTRNRTRNbipolardata'};
+else 
+    alldata.RTRNdata=data(datastart(RTRN):dataend(RTRN));% Call different fields as StructName.fieldName-> Struct is alldata and field is S1dataR
+    alldata.LTRNdata=data(datastart(LTRN):dataend(LTRN));
+    alldata.stimdata=data(datastart(stim):dataend(stim));
+    alldata.LTRNRTRNbipolardata=alldata.LTRNdata-alldata.RTRNdata;
+    alldata.LCA1Hdata=data(datastart(LCA1H):dataend(LCA1H));
+    alldata.RCA1Hdata=data(datastart(RCA1H):dataend(RCA1H));
+    names={'RTRNdata','LTRNdata','RCA1Hdata','LCA1Hdata', 'stimdata', 'LTRNRTRNbipolardata'};
+end 
 
 %% plot raw data
 figure
@@ -61,8 +96,6 @@ X=X/max(X);
 Y=X>0.5;
 %Y=X>0.04;used during debugging, works as well
 Z=diff(Y);
-% index_allstim=find(Z>0.5);
-% index_allstim=index_allstim+1;
 index_allstim=find(Z>0.04);
 index_allstim=index_allstim+1;
 
@@ -80,9 +113,13 @@ tb=1; %time before stim to start STA
 ta=9; %time after stim to end STA
 
 for i=1:length(names)
-    for j=2:(length(index_stim)-1) %cycle through stimuli
-        stas.(char(names(i)))=[stas.(char(names(i))); filteredData.(char(names(i)))((index_stim(j)-fs*tb):(index_stim(j)+fs*ta))];
-    end
+    for j=2:(length(index_stim)-1) %cycle through stimuli         
+        if baselinenormal == 1
+            stas.(char(names(i)))=[stas.(char(names(i))); (filteredData.(char(names(i)))((index_stim(j)-fs*tb):(index_stim(j)+fs*ta)))/rms_baseline];
+        else
+            stas.(char(names(i)))=[stas.(char(names(i))); filteredData.(char(names(i)))((index_stim(j)-fs*tb):(index_stim(j)+fs*ta))];
+        end
+    end 
 end
 
 %% plot filtered STAS
@@ -128,8 +165,8 @@ clear yticklabels
         yticklabels({  0 1.0000 2.0000 3.0000 4.0000 5.0000 6.0000 7.0000 8.0000 9.0000 10.0000 ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' 20.0000 ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' 30 ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' 40 ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' ' 50})
         set(gca,'FontSize',12)
 
-        caxis([0.00, .0012])
-
+%         caxis([0.00, .0011])
+        caxis([0.00, .0003])
         % pngFileName = sprintf('plot_%d.fig', i);
         % fullFileName = fullfile(folder, pngFileName);
 		
